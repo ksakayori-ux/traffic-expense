@@ -3,746 +3,791 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>交通費精算クラウドアプリ</title>
+  <title>交通費精算クラウド</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- FontAwesome (Icons) -->
+  <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <!-- Chart.js (ダッシュボード用) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- Firebase SDK (Compat Version for ease of use) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
     body {
-      font-family: 'Noto Sans JP', sans-serif;
+      font-family: 'Inter', 'Noto Sans JP', sans-serif;
+      background-color: #f8fafc;
     }
-    .custom-scroll::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    .custom-scroll::-webkit-scrollbar-track {
-      background: #f1f1f1;
-    }
-    .custom-scroll::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
-      border-radius: 4px;
+    .custom-shadow {
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
     }
   </style>
 </head>
-<body class="bg-slate-50 min-h-screen text-slate-800">
+<body class="min-h-screen text-slate-800 flex flex-col">
 
-  <div id="app" class="max-w-md mx-auto md:max-w-6xl min-h-screen flex flex-col bg-white shadow-xl md:my-4 md:rounded-2xl overflow-hidden">
-    
-    <!-- ヘッダー -->
-    <header class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 shadow-md sticky top-0 z-50">
-      <div class="flex justify-between items-center">
-        <div class="flex items-center space-x-3">
-          <div class="bg-white text-blue-600 p-2 rounded-lg shadow-inner">
-            <i class="fa-solid fa-train-subway text-xl"></i>
-          </div>
-          <div>
-            <h1 class="text-lg font-bold tracking-wider">交通費精算</h1>
-            <p class="text-xs text-blue-100">外からラクラク登録＆自動集計</p>
-          </div>
+  <!-- ヘッダー -->
+  <header class="bg-white border-b border-slate-100 sticky top-0 z-40 shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+      <div class="flex items-center space-x-3">
+        <div class="bg-blue-600 text-white p-2 rounded-xl shadow-md shadow-blue-200">
+          <i class="fa-solid fa-file-invoice-dollar text-xl"></i>
         </div>
-        <!-- 同期ステータス -->
-        <div class="flex items-center space-x-2 text-xs bg-blue-800/50 px-3 py-1.5 rounded-full" id="sync-status">
-          <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse" id="status-indicator"></span>
-          <span id="status-text">接続中...</span>
+        <div>
+          <h1 class="text-lg font-bold text-slate-900 tracking-tight">交通費精算クラウド</h1>
+          <p class="text-xs text-slate-500 font-medium">いつでも・どこでも簡単入力</p>
         </div>
       </div>
-    </header>
+      <!-- Excel保存ボタン -->
+      <button onclick="downloadCSV()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-medium text-sm px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-100 flex items-center space-x-2">
+        <i class="fa-solid fa-file-excel"></i>
+        <span>Excel形式で保存</span>
+      </button>
+    </div>
+  </header>
 
-    <!-- メインコンテンツ -->
-    <main class="flex-1 flex flex-col md:flex-row overflow-hidden">
+  <!-- タブ切替 -->
+  <div class="bg-white border-b border-slate-100 sticky top-[73px] z-30">
+    <div class="max-w-6xl mx-auto px-4 flex">
+      <button id="tab-register-btn" onclick="switchTab('register')" class="flex-1 py-4 text-center font-bold text-sm border-b-2 border-blue-600 text-blue-600 transition-all flex items-center justify-center space-x-2">
+        <i class="fa-solid fa-pen-to-square"></i>
+        <span>交通費登録</span>
+      </button>
+      <button id="tab-report-btn" onclick="switchTab('report')" class="flex-1 py-4 text-center font-bold text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center space-x-2">
+        <i class="fa-solid fa-chart-pie"></i>
+        <span>月別・人別集計表</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- メインコンテンツ -->
+  <main class="flex-1 max-w-6xl w-full mx-auto p-4 md:py-8">
+
+    <!-- タブ①：登録フォーム & 履歴一覧 -->
+    <div id="tab-register" class="space-y-6">
       
-      <!-- 左カラム: 入力フォーム -->
-      <section class="w-full md:w-5/12 p-4 border-r border-slate-100 overflow-y-auto custom-scroll flex flex-col">
-        <div class="bg-blue-50/50 border border-blue-100 rounded-xl p-3 mb-4 text-xs text-blue-800 flex items-start space-x-2">
-          <i class="fa-solid fa-circle-info mt-0.5 text-blue-600"></i>
-          <p>
-            <strong>同日複数登録可能！</strong>「行き」「帰り」などで同じ日付を入力しても、重複エラーにならず何回でも保存できます。
-          </p>
-        </div>
+      <!-- 入力フォームカード -->
+      <div class="bg-white rounded-2xl border border-slate-100 custom-shadow p-6">
+        <h2 class="text-base font-bold text-slate-900 mb-6 flex items-center space-x-2">
+          <span class="w-1.5 h-5 bg-blue-600 rounded-full inline-block"></span>
+          <span>交通費の新規登録</span>
+        </h2>
 
-        <form id="expense-form" class="space-y-4" onsubmit="event.preventDefault();">
+        <form id="expense-form" onsubmit="handleFormSubmit(event)" class="space-y-6">
           
-          <!-- 日付 -->
-          <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">
-              <i class="fa-regular fa-calendar-days mr-1 text-blue-500"></i>日付
-            </label>
-            <input type="date" id="input-date" required
-              class="w-full border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-base bg-white shadow-sm">
-          </div>
-
-          <!-- 氏名 -->
-          <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">
-              <i class="fa-regular fa-user mr-1 text-blue-500"></i>氏名
-            </label>
-            <div class="relative">
-              <select id="input-name" required
-                class="w-full border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white shadow-sm text-base">
-                <option value="坂寄">坂寄</option>
-                <option value="小川">小川</option>
-                <option value="深澤">深澤</option>
-                <option value="森尻">森尻</option>
-              </select>
-              <div class="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-slate-400">
-                <i class="fa-solid fa-chevron-down"></i>
-              </div>
-            </div>
-          </div>
-
-          <!-- 駅名（乗車駅・降車駅） -->
-          <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 mb-1">乗車駅</label>
-              <input type="text" id="input-from" placeholder="例: 小田原" required
-                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-sm bg-white">
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-500 mb-1">降車駅</label>
-              <input type="text" id="input-to" placeholder="例: 二宮" required
-                class="w-full border border-slate-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-sm bg-white">
-            </div>
-          </div>
-
-          <!-- 【超大本命】保存前でも絶対にクリックできる「Yahoo!路線検索ボタン」 -->
-          <div id="search-action-container">
-            <button type="button" id="btn-yahoo-search" disabled
-              class="w-full py-3.5 px-4 rounded-xl font-bold text-center flex items-center justify-center space-x-2 shadow-sm transition-all text-sm bg-slate-100 text-slate-400 cursor-not-allowed">
-              <i class="fa-solid fa-magnifying-glass"></i>
-              <span>駅名を入力するとYahoo!路線ボタンが出ます</span>
-            </button>
-          </div>
-
-          <!-- 運賃入力 -->
-          <div class="grid grid-cols-2 gap-3">
+          <!-- 日付・氏名 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- 日付 -->
             <div>
               <label class="block text-sm font-medium text-slate-600 mb-1">
-                <i class="fa-solid fa-credit-card mr-1 text-blue-500"></i>IC運賃 (円)
+                <i class="fa-regular fa-calendar-days mr-1 text-blue-500"></i>日付
               </label>
-              <input type="number" id="input-ic-fare" min="0" placeholder="0"
-                class="w-full border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base shadow-sm bg-white">
+              <input type="date" id="input-date" required
+                class="w-full border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-base bg-white shadow-sm">
             </div>
+
+            <!-- 氏名 -->
             <div>
               <label class="block text-sm font-medium text-slate-600 mb-1">
-                <i class="fa-solid fa-wallet mr-1 text-blue-500"></i>通常運賃 (円)
+                <i class="fa-regular fa-user mr-1 text-blue-500"></i>氏名
               </label>
-              <input type="number" id="input-regular-fare" min="0" placeholder="0"
-                class="w-full border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base shadow-sm bg-white">
-            </div>
-          </div>
-
-          <!-- 支払方法と備考 -->
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-sm font-medium text-slate-600 mb-1">支払方法</label>
               <div class="relative">
-                <select id="input-payment"
-                  class="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white shadow-sm text-sm">
-                  <option value="ICカード">ICカード</option>
-                  <option value="現金">現金</option>
-                  <option value="その他">その他</option>
+                <select id="input-name" required
+                  class="w-full border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white shadow-sm text-base">
+                  <option value="" disabled selected hidden>選択してください</option>
+                  <option value="坂寄">坂寄</option>
+                  <option value="小川">小川</option>
+                  <option value="深澤">深澤</option>
+                  <option value="森尻">森尻</option>
                 </select>
-                <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400 text-xs">
+                <div class="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-slate-400">
                   <i class="fa-solid fa-chevron-down"></i>
                 </div>
               </div>
             </div>
-            <div>
-              <label class="block text-sm font-medium text-slate-600 mb-1">備考</label>
-              <input type="text" id="input-memo" placeholder="例: 〇〇様訪問のため"
-                class="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-sm bg-white">
+          </div>
+
+          <!-- 交通手段の選択（リニューアル） -->
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-2">
+              <i class="fa-solid fa-route mr-1 text-blue-500"></i>交通手段
+            </label>
+            <div class="grid grid-cols-4 gap-2">
+              <button type="button" id="btn-train" onclick="selectTransport('train')" class="py-3 px-2 rounded-xl text-center border-2 border-blue-600 text-blue-600 font-bold bg-blue-50/50 flex flex-col items-center justify-center transition-all">
+                <i class="fa-solid fa-train text-lg mb-1"></i>
+                <span class="text-xs">電車</span>
+              </button>
+              <button type="button" id="btn-taxi" onclick="selectTransport('taxi')" class="py-3 px-2 rounded-xl text-center border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 flex flex-col items-center justify-center transition-all">
+                <i class="fa-solid fa-taxi text-lg mb-1"></i>
+                <span class="text-xs">タクシー</span>
+              </button>
+              <button type="button" id="btn-bus" onclick="selectTransport('bus')" class="py-3 px-2 rounded-xl text-center border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 flex flex-col items-center justify-center transition-all">
+                <i class="fa-solid fa-bus text-lg mb-1"></i>
+                <span class="text-xs">バス</span>
+              </button>
+              <button type="button" id="btn-other" onclick="selectTransport('other')" class="py-3 px-2 rounded-xl text-center border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 flex flex-col items-center justify-center transition-all">
+                <i class="fa-solid fa-ellipsis text-lg mb-1"></i>
+                <span class="text-xs">その他</span>
+              </button>
             </div>
+            <input type="hidden" id="input-transport" value="train">
+          </div>
+
+          <!-- 出発地・目的地（タクシー選択時は自動で非表示になります） -->
+          <div id="section-route" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label id="lbl-from" class="block text-sm font-medium text-slate-600 mb-1">出発地（乗車駅）</label>
+              <input type="text" id="input-from" placeholder="例：渋谷" required
+                class="w-full border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-base bg-white shadow-sm">
+            </div>
+            <div>
+              <label id="lbl-to" class="block text-sm font-medium text-slate-600 mb-1">目的地（降車駅）</label>
+              <input type="text" id="input-to" placeholder="例：新宿" required
+                class="w-full border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-base bg-white shadow-sm">
+            </div>
+          </div>
+
+          <!-- Yahoo路線検索連携ボタン（電車・バスのみ表示） -->
+          <div id="section-yahoo-btn" class="hidden">
+            <button type="button" onclick="lookupYahooRoute()"
+              class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center space-x-2 text-sm border border-slate-200">
+              <i class="fa-solid fa-magnifying-glass text-red-500"></i>
+              <span id="lbl-yahoo-text">Yahoo!路線情報で運賃を調べる</span>
+            </button>
+          </div>
+
+          <!-- 金額入力（交通手段に応じて自動で最適化されます） -->
+          <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <!-- ① 電車用：ICと切符の選択式 -->
+            <div id="section-fare-train" class="space-y-4">
+              <span class="block text-sm font-bold text-slate-700 mb-1">運賃の入力</span>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-white p-3 rounded-xl border border-slate-200">
+                  <label class="block text-xs font-bold text-slate-500 mb-1">ICカード利用（推奨）</label>
+                  <div class="relative">
+                    <input type="number" id="input-ic-fare" placeholder="0" min="0"
+                      class="w-full border-b border-slate-200 focus:border-blue-500 py-1 pr-6 focus:outline-none text-lg font-bold text-slate-800">
+                    <span class="absolute right-0 bottom-1.5 text-sm text-slate-400 font-bold">円</span>
+                  </div>
+                </div>
+                <div class="bg-white p-3 rounded-xl border border-slate-200">
+                  <label class="block text-xs font-bold text-slate-500 mb-1">切符・その他通常運賃</label>
+                  <div class="relative">
+                    <input type="number" id="input-regular-fare" placeholder="0" min="0"
+                      class="w-full border-b border-slate-200 focus:border-blue-500 py-1 pr-6 focus:outline-none text-lg font-bold text-slate-800">
+                    <span class="absolute right-0 bottom-1.5 text-sm text-slate-400 font-bold">円</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ② タクシー/バス/その他用：1本化された入力 -->
+            <div id="section-fare-single" class="hidden">
+              <label class="block text-sm font-bold text-slate-700 mb-2">運賃（消費税込）</label>
+              <div class="bg-white p-3 rounded-xl border border-slate-200 relative">
+                <input type="number" id="input-single-fare" placeholder="0" min="0"
+                  class="w-full border-none focus:outline-none text-xl font-bold text-slate-800 pr-10">
+                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-base text-slate-400 font-bold">円</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 備考 -->
+          <div>
+            <label class="block text-sm font-medium text-slate-600 mb-1">
+              <i class="fa-regular fa-comment-dots mr-1 text-blue-500"></i>備考（用件、訪問先など）
+            </label>
+            <input type="text" id="input-memo" placeholder="例：〇〇株式会社様 訪問打ち合わせのため"
+              class="w-full border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-base bg-white shadow-sm">
           </div>
 
           <!-- 登録ボタン -->
-          <button type="button" id="btn-submit" onclick="saveRecord()"
-            class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3.5 rounded-xl font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2 text-base">
-            <i class="fa-solid fa-circle-check"></i>
-            <span>この内容で精算データを登録する</span>
+          <button type="submit"
+            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg shadow-blue-100 flex items-center justify-center space-x-2 text-base">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span>登録する</span>
           </button>
         </form>
-      </section>
-
-      <!-- 右カラム: 履歴 ＆ ダッシュボード集計 -->
-      <section class="w-full md:w-7/12 bg-slate-50/50 p-4 flex flex-col space-y-4 overflow-y-auto custom-scroll">
-        
-        <!-- タブ選択 (履歴一覧 or 月別人別ダッシュボード) -->
-        <div class="flex bg-slate-200/60 p-1 rounded-xl">
-          <button onclick="switchTab('list')" id="tab-list"
-            class="flex-1 text-center py-2.5 rounded-lg font-bold text-sm transition-all bg-white text-blue-600 shadow-sm">
-            <i class="fa-solid fa-list mr-1.5"></i>精算履歴一覧
-          </button>
-          <button onclick="switchTab('dashboard')" id="tab-dashboard"
-            class="flex-1 text-center py-2.5 rounded-lg font-bold text-sm transition-all text-slate-600 hover:text-slate-800">
-            <i class="fa-solid fa-chart-pie mr-1.5"></i>月別・人別集計表
-          </button>
-        </div>
-
-        <!-- 履歴一覧ビュー -->
-        <div id="view-list" class="space-y-3 flex-1 flex flex-col min-h-0">
-          <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-            <span class="text-xs font-semibold text-slate-500">登録履歴（合計: <span id="record-count" class="text-blue-600">0</span>件）</span>
-            <div class="flex space-x-2">
-              <button onclick="exportToCSV()" class="text-xs text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg font-bold transition-all flex items-center">
-                <i class="fa-solid fa-file-excel mr-1"></i>Excel形式で保存
-              </button>
-            </div>
-          </div>
-
-          <!-- 精算カードリスト -->
-          <div id="cards-container" class="space-y-3 overflow-y-auto flex-1 custom-scroll" style="max-height: 480px;">
-            <div class="text-center py-12 text-slate-400">
-              <i class="fa-solid fa-folder-open text-3xl mb-2"></i>
-              <p class="text-sm">データがありません。新しく登録してください。</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- ダッシュボード集計ビュー -->
-        <div id="view-dashboard" class="hidden space-y-4 flex-1">
-          <!-- 今月の集計サマリー -->
-          <div class="grid grid-cols-2 gap-3">
-            <div class="bg-gradient-to-br from-blue-500 to-indigo-600 text-white p-4 rounded-xl shadow-md">
-              <p class="text-xs text-blue-100" id="current-month-label">選択月度の総額</p>
-              <h3 class="text-2xl font-bold mt-1" id="sum-monthly-total">¥0</h3>
-              <p class="text-[10px] text-blue-200 mt-2" id="current-month-text">25日〜翌月24日自動集計</p>
-            </div>
-            <div class="bg-white border border-slate-100 p-4 rounded-xl shadow-sm flex flex-col justify-between">
-              <p class="text-xs text-slate-500">期間内の精算回数</p>
-              <h3 class="text-2xl font-bold text-slate-800" id="monthly-count">0回</h3>
-              <p class="text-[10px] text-slate-400 mt-2">行き・帰りなども含めた合計回数</p>
-            </div>
-          </div>
-
-          <!-- 人別・月別集計表 -->
-          <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-            <div class="flex justify-between items-center mb-3">
-              <h4 class="text-sm font-bold text-slate-700">
-                <i class="fa-solid fa-user-group text-blue-500 mr-1.5"></i>氏名別の月間合計金額
-              </h4>
-              <!-- 月変更フィルター（選択した月の「24日締め」として集計） -->
-              <div class="flex items-center space-x-1">
-                <input type="month" id="filter-month" onchange="renderDashboard()"
-                  class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <span class="text-xs text-slate-500 font-bold">度</span>
-              </div>
-            </div>
-            
-            <!-- 棒グラフ表示エリア -->
-            <div class="mb-4 h-44">
-              <canvas id="summaryChart"></canvas>
-            </div>
-
-            <!-- 集計詳細テーブル -->
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs">
-                <thead>
-                  <tr class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b">
-                    <th class="py-2 px-3">氏名</th>
-                    <th class="py-2 px-3 text-right">精算回数</th>
-                    <th class="py-2 px-3 text-right">合計金額</th>
-                  </tr>
-                </thead>
-                <tbody id="summary-table-body" class="divide-y divide-slate-100">
-                  <!-- JSで動的に追加 -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-      </section>
-
-    </main>
-
-    <!-- フッター -->
-    <footer class="bg-slate-100 border-t border-slate-200 text-center py-3 text-[11px] text-slate-500">
-      <p>&copy; 2026 交通費精算クラウドシステム - 25日〜24日締め完全対応</p>
-    </footer>
-
-  </div>
-
-  <!-- カスタムダイアログ -->
-  <div id="custom-modal" class="hidden fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl animate-fade-in">
-      <div class="text-center" id="modal-icon-container"></div>
-      <h3 class="text-lg font-bold text-slate-800 text-center mt-3" id="modal-title">確認</h3>
-      <p class="text-sm text-slate-500 text-center mt-2 leading-relaxed" id="modal-message">メッセージ内容</p>
-      <div class="mt-6 flex justify-center">
-        <button onclick="closeModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-xl text-sm transition-all shadow-md">
-          確認
-        </button>
       </div>
+
+      <!-- 精算履歴一覧 -->
+      <div class="bg-white rounded-2xl border border-slate-100 custom-shadow p-6">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-base font-bold text-slate-900 flex items-center space-x-2">
+            <span class="w-1.5 h-5 bg-blue-600 rounded-full inline-block"></span>
+            <span>精算履歴（新着順）</span>
+          </h2>
+          <span id="history-count" class="text-xs bg-slate-100 text-slate-600 font-bold px-2.5 py-1 rounded-full">0件</span>
+        </div>
+
+        <div id="history-list" class="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+          <!-- JSで履歴カードが動的に挿入されます -->
+          <div class="text-center py-8 text-slate-400 text-sm">
+            <i class="fa-solid fa-spinner fa-spin mr-2"></i>履歴データを読み込み中...
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- タブ②：月別・人別集計表 -->
+    <div id="tab-report" class="hidden space-y-6">
+      
+      <!-- 月度フィルター -->
+      <div class="bg-white rounded-2xl border border-slate-100 custom-shadow p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 class="text-base font-bold text-slate-900">月別集計表</h2>
+          <p class="text-xs text-slate-500 mt-1">「毎月25日〜翌月24日」締めルールで集計されています</p>
+        </div>
+        <div class="flex items-center space-x-2 w-full md:w-auto">
+          <label class="text-sm font-medium text-slate-600 shrink-0">表示月度:</label>
+          <input type="month" id="filter-month" onchange="loadReport()"
+            class="border border-slate-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-base bg-white shadow-sm font-bold text-slate-700 w-full md:w-auto">
+        </div>
+      </div>
+
+      <!-- 人別集計グラフ & 表 -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <!-- ビジュアルグラフ表示 -->
+        <div class="bg-white rounded-2xl border border-slate-100 custom-shadow p-6">
+          <h3 class="text-sm font-bold text-slate-900 mb-6">個人別の交通費（グラフ）</h3>
+          <div id="report-graph-container" class="space-y-6">
+            <!-- JSで動的にプログレスバーを生成 -->
+            <div class="text-center py-8 text-slate-400 text-sm">
+              データがありません
+            </div>
+          </div>
+        </div>
+
+        <!-- テーブル表表示 -->
+        <div class="bg-white rounded-2xl border border-slate-100 custom-shadow p-6">
+          <h3 class="text-sm font-bold text-slate-900 mb-4">個人別の内訳（一覧）</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm text-slate-600">
+              <thead>
+                <tr class="border-b border-slate-100 text-slate-400 text-xs">
+                  <th class="py-3 font-medium">氏名</th>
+                  <th class="py-3 font-medium text-right">件数</th>
+                  <th class="py-3 font-medium text-right">合計金額</th>
+                </tr>
+              </thead>
+              <tbody id="report-table-body">
+                <!-- JSで集計結果の行を挿入 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- 登録完了ダイアログ -->
+  <div id="custom-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 text-center custom-shadow animate-[bounce_0.5s_ease-out]">
+      <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
+        <i class="fa-solid fa-circle-check animate-pulse"></i>
+      </div>
+      <h3 class="text-lg font-bold text-slate-900 mb-2">精算データを登録しました</h3>
+      <p class="text-sm text-slate-500 mb-6">クラウドへの保存と専用Chatへの通知が完了しました！</p>
+      <button onclick="closeCustomModal()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-xl transition-all">
+        閉じる
+      </button>
     </div>
   </div>
 
-  <!-- Firebase関連とアプリケーションロジック -->
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-    import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-    import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+  <!-- ----------------- JavaScript 処理部 ----------------- -->
+  <script>
+    // Firebase設定 (ユーザー様のデータベースに接続されます)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI",
+      authDomain: "ksakayori-ux.firebaseapp.com",
+      projectId: "ksakayori-ux",
+      storageBucket: "ksakayori-ux.appspot.com",
+      messagingSenderId: "1055535314059",
+      appId: "1:1055535314059:web:1584c37e6f85ebecb476eb"
+    };
 
-    let db, auth, user;
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'traffic-expense-app-id';
-    let dataList = [];
-    let chartInstance = null;
+    // Firebaseの初期化
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
 
-    const LOCAL_STORAGE_KEY = `traffic_expenses_backup_${appId}`;
+    // 締め日前日のリマインドなどで使われる、ユーザー様の専用Google Chat Webhook
+    const webhookUrl = "https://chat.googleapis.com/v1/spaces/AAAAxHdOaBA/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Fsh3lqmrbuDx8AqJIyHfeBdDecgx03H1pEJgwBUuPMw";
 
-    // 駅名の変更イベント監視（Yahoo路線ボタン連動）
-    const inputFrom = document.getElementById('input-from');
-    const inputTo = document.getElementById('input-to');
-    const btnYahoo = document.getElementById('btn-yahoo-search');
+    // 交通手段のデータ一覧を管理
+    let currentTransport = 'train';
+    let allRecords = [];
 
-    function updateYahooButton() {
-      const fromVal = inputFrom.value.trim();
-      const toVal = inputTo.value.trim();
-      
-      if (fromVal !== '' && toVal !== '') {
-        const url = `https://transit.yahoo.co.jp/search/result?from=${encodeURIComponent(fromVal)}&to=${encodeURIComponent(toVal)}&ticket=ic`;
-        
-        btnYahoo.disabled = false;
-        btnYahoo.className = "w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white py-3.5 px-4 rounded-xl font-bold text-center flex items-center justify-center space-x-2 shadow-md hover:shadow-lg transition-all text-sm cursor-pointer border border-emerald-400";
-        btnYahoo.innerHTML = `
-          <i class="fa-solid fa-train text-base animate-bounce"></i>
-          <span>🔍【保存前に確認】Yahoo!路線で運賃を調べる</span>
-        `;
-        btnYahoo.onclick = function() {
-          window.open(url, '_blank');
-        };
+    // 画面タブ切替
+    window.switchTab = function(tabName) {
+      const regTab = document.getElementById('tab-register');
+      const repTab = document.getElementById('tab-report');
+      const regBtn = document.getElementById('tab-register-btn');
+      const repBtn = document.getElementById('tab-report-btn');
+
+      if (tabName === 'register') {
+        regTab.classList.remove('hidden');
+        repTab.classList.add('hidden');
+        regBtn.className = "flex-1 py-4 text-center font-bold text-sm border-b-2 border-blue-600 text-blue-600 transition-all flex items-center justify-center space-x-2";
+        repBtn.className = "flex-1 py-4 text-center font-bold text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center space-x-2";
       } else {
-        btnYahoo.disabled = true;
-        btnYahoo.className = "w-full bg-slate-100 text-slate-400 py-3.5 px-4 rounded-xl font-bold text-center flex items-center justify-center space-x-2 shadow-sm transition-all text-sm cursor-not-allowed";
-        btnYahoo.innerHTML = `
-          <i class="fa-solid fa-magnifying-glass"></i>
-          <span>駅名を入力するとYahoo!路線ボタンが出ます</span>
-        `;
-        btnYahoo.onclick = null;
-      }
-    }
-
-    inputFrom.addEventListener('input', updateYahooButton);
-    inputTo.addEventListener('input', updateYahooButton);
-
-    // 今日が25日以降なら、翌月度を初期値に、24日以前なら今月度を初期値にする
-    const today = new Date();
-    let defaultYear = today.getFullYear();
-    let defaultMonth = today.getMonth() + 1; // 1-12
-    
-    // 25日以降の入力は「翌月度」扱い
-    if (today.getDate() >= 25) {
-      defaultMonth += 1;
-      if (defaultMonth > 12) {
-        defaultMonth = 1;
-        defaultYear += 1;
-      }
-    }
-    const defaultMonthStr = `${defaultYear}-${String(defaultMonth).padStart(2, '0')}`;
-    
-    document.getElementById('input-date').value = today.toISOString().substring(0, 10);
-    document.getElementById('filter-month').value = defaultMonthStr;
-
-    // アプリの初期化
-    const initApp = async () => {
-      try {
-        const statusIndicator = document.getElementById('status-indicator');
-        const statusText = document.getElementById('status-text');
-
-        if (typeof __firebase_config !== 'undefined') {
-          const firebaseConfig = JSON.parse(__firebase_config);
-          const app = initializeApp(firebaseConfig);
-          auth = getAuth(app);
-          db = getFirestore(app);
-
-          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            await signInWithCustomToken(auth, __initial_auth_token);
-          } else {
-            await signInAnonymously(auth);
-          }
-
-          onAuthStateChanged(auth, (currentUser) => {
-            if (currentUser) {
-              user = currentUser;
-              statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
-              statusText.innerText = "同期完了";
-              startSync();
-            } else {
-              fallbackToOffline();
-            }
-          });
-        } else {
-          fallbackToOffline();
-        }
-      } catch (err) {
-        console.error("Firebaseの初期化に失敗しました", err);
-        fallbackToOffline();
+        regTab.classList.add('hidden');
+        repTab.classList.remove('hidden');
+        regBtn.className = "flex-1 py-4 text-center font-bold text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center space-x-2";
+        repBtn.className = "flex-1 py-4 text-center font-bold text-sm border-b-2 border-blue-600 text-blue-600 transition-all flex items-center justify-center space-x-2";
+        loadReport();
       }
     };
 
-    function fallbackToOffline() {
-      const statusIndicator = document.getElementById('status-indicator');
-      const statusText = document.getElementById('status-text');
-      statusIndicator.className = "w-2.5 h-2.5 rounded-full bg-orange-400";
-      statusText.innerText = "オフライン保存";
+    // 交通手段選択切り替え
+    window.selectTransport = function(type) {
+      currentTransport = type;
+      document.getElementById('input-transport').value = type;
 
-      const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (localData) {
-        dataList = JSON.parse(localData);
-      } else {
-        dataList = []; // 初期サンプル用テストデータを完全に削除して空っぽ（綺麗）にします
-        saveToLocal();
-      }
-      renderData();
-    }
+      const btnTrain = document.getElementById('btn-train');
+      const btnTaxi = document.getElementById('btn-taxi');
+      const btnBus = document.getElementById('btn-bus');
+      const btnOther = document.getElementById('btn-other');
 
-    function saveToLocal() {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataList));
-    }
-
-    function startSync() {
-      if (!user || !db) return;
-      const expenseCollection = collection(db, 'artifacts', appId, 'public', 'data', 'traffic_expenses');
-      
-      onSnapshot(expenseCollection, (snapshot) => {
-        dataList = [];
-        snapshot.forEach((doc) => {
-          dataList.push({ id: doc.id, ...doc.data() });
-        });
-        saveToLocal();
-        renderData();
-      }, (error) => {
-        console.error("Firestore同期エラー:", error);
-        fallbackToOffline();
+      // ボタンの見た目初期化
+      [btnTrain, btnTaxi, btnBus, btnOther].forEach(btn => {
+        btn.className = "py-3 px-2 rounded-xl text-center border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 flex flex-col items-center justify-center transition-all";
       });
-    }
 
-    window.saveRecord = async function() {
-      const date = document.getElementById('input-date').value;
-      const name = document.getElementById('input-name').value;
-      const from = document.getElementById('input-from').value.trim();
-      const to = document.getElementById('input-to').value.trim();
-      const icFareVal = document.getElementById('input-ic-fare').value;
-      const regularFareVal = document.getElementById('input-regular-fare').value;
-      const payment = document.getElementById('input-payment').value;
-      const memo = document.getElementById('input-memo').value.trim();
+      // 選択されたボタンをアクティブ化
+      const activeBtn = document.getElementById(`btn-${type}`);
+      activeBtn.className = "py-3 px-2 rounded-xl text-center border-2 border-blue-600 text-blue-600 font-bold bg-blue-50/50 flex flex-col items-center justify-center transition-all";
 
-      if (!date || !name || !from || !to) {
-        showCustomModal("入力エラー", "日付、氏名、乗車駅、降車駅は必須項目です。", "error");
-        return;
-      }
+      // 各種表示の動的変更
+      const routeSection = document.getElementById('section-route');
+      const yahooSection = document.getElementById('section-yahoo-btn');
+      const fareTrain = document.getElementById('section-fare-train');
+      const fareSingle = document.getElementById('section-fare-single');
 
-      const icFare = icFareVal !== "" ? parseInt(icFareVal, 10) : 0;
-      const regularFare = regularFareVal !== "" ? parseInt(regularFareVal, 10) : 0;
+      const fromInput = document.getElementById('input-from');
+      const toInput = document.getElementById('input-to');
 
-      const id = 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      const newRecord = {
-        date,
-        name,
-        from,
-        to,
-        icFare,
-        regularFare,
-        payment,
-        memo
-      };
-
-      if (db && user) {
-        try {
-          const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'traffic_expenses', id);
-          await setDoc(docRef, newRecord);
-          showCustomModal("登録完了", `${name}さんの精算データを保存しました。`, "success");
-        } catch (err) {
-          console.error("クラウド保存失敗", err);
-          newRecord.id = id;
-          dataList.unshift(newRecord);
-          saveToLocal();
-          renderData();
-          showCustomModal("ローカル保存完了", `オフラインデータとして登録しました。`, "warning");
-        }
+      if (type === 'train') {
+        // 電車
+        routeSection.classList.remove('hidden');
+        yahooSection.classList.remove('hidden');
+        fareTrain.classList.remove('hidden');
+        fareSingle.classList.add('hidden');
+        document.getElementById('lbl-from').innerText = "出発地（乗車駅）";
+        document.getElementById('lbl-to').innerText = "目的地（降車駅）";
+        fromInput.required = true;
+        toInput.required = true;
+        document.getElementById('lbl-yahoo-text').innerText = "Yahoo!路線情報で電車運賃を調べる";
+      } else if (type === 'bus') {
+        // バス
+        routeSection.classList.remove('hidden');
+        yahooSection.classList.remove('hidden');
+        fareTrain.classList.add('hidden');
+        fareSingle.classList.remove('hidden');
+        document.getElementById('lbl-from').innerText = "出発地";
+        document.getElementById('lbl-to').innerText = "目的地";
+        fromInput.required = true;
+        toInput.required = true;
+        document.getElementById('lbl-yahoo-text').innerText = "Yahoo!路線情報でバス運賃を調べる";
+      } else if (type === 'taxi') {
+        // タクシー
+        routeSection.classList.add('hidden');
+        yahooSection.classList.add('hidden');
+        fareTrain.classList.add('hidden');
+        fareSingle.classList.remove('hidden');
+        fromInput.required = false;
+        toInput.required = false;
+        fromInput.value = "";
+        toInput.value = "";
       } else {
-        newRecord.id = id;
-        dataList.unshift(newRecord);
-        saveToLocal();
-        renderData();
-        showCustomModal("保存完了", `${name}さんの精算データを確認しました！`, "success");
+        // その他
+        routeSection.classList.remove('hidden');
+        yahooSection.classList.add('hidden');
+        fareTrain.classList.add('hidden');
+        fareSingle.classList.remove('hidden');
+        document.getElementById('lbl-from').innerText = "出発地";
+        document.getElementById('lbl-to').innerText = "目的地";
+        fromInput.required = true;
+        toInput.required = true;
       }
 
-      document.getElementById('input-from').value = "";
-      document.getElementById('input-to').value = "";
-      document.getElementById('input-ic-fare').value = "";
-      document.getElementById('input-regular-fare').value = "";
-      document.getElementById('input-memo').value = "";
       updateYahooButton();
     };
 
-    window.deleteRecord = async function(id) {
-      if (!confirm("この交通費精算データを削除してもよろしいですか？")) return;
+    // Yahoo路線検索起動
+    window.lookupYahooRoute = function() {
+      const from = document.getElementById('input-from').value.trim();
+      const to = document.getElementById('input-to').value.trim();
+      if (!from || !to) return;
 
-      if (db && user) {
-        try {
-          const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'traffic_expenses', id);
-          await deleteDoc(docRef);
-        } catch (err) {
-          console.error("削除エラー", err);
-        }
+      let url = "";
+      if (currentTransport === 'bus') {
+        // バス優先モード
+        url = `https://transit.yahoo.co.jp/search/result?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&kb=1&type=5`;
       } else {
-        dataList = dataList.filter(item => item.id !== id);
-        saveToLocal();
-        renderData();
+        // 電車通常
+        url = `https://transit.yahoo.co.jp/search/result?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
       }
+      window.open(url, '_blank');
     };
 
-    function renderData() {
-      dataList.sort((a, b) => new Date(b.date) - new Date(a.date));
+    // Yahoo検索ボタンの活性化制御
+    function updateYahooButton() {
+      const from = document.getElementById('input-from').value.trim();
+      const to = document.getElementById('input-to').value.trim();
+      const yahooBtn = document.getElementById('section-yahoo-btn');
 
-      const container = document.getElementById('cards-container');
-      const countLabel = document.getElementById('record-count');
-      countLabel.innerText = dataList.length;
+      if ((currentTransport === 'train' || currentTransport === 'bus') && from && to) {
+        yahooBtn.classList.remove('hidden');
+      } else {
+        yahooBtn.classList.add('hidden');
+      }
+    }
 
-      if (dataList.length === 0) {
-        container.innerHTML = `
-          <div class="text-center py-12 text-slate-400 bg-white rounded-2xl border border-slate-100 p-6">
-            <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-300"></i>
-            <p class="text-sm">データがありません。新しく登録してください。</p>
-          </div>
-        `;
-        renderDashboard();
+    // 入力欄変更時の監視
+    document.getElementById('input-from').addEventListener('input', updateYahooButton);
+    document.getElementById('input-to').addEventListener('input', updateYahooButton);
+
+    // 交通費の登録実行
+    window.handleFormSubmit = async function(e) {
+      e.preventDefault();
+
+      const date = document.getElementById('input-date').value;
+      const name = document.getElementById('input-name').value;
+      const transport = document.getElementById('input-transport').value;
+      const from = document.getElementById('input-from').value.trim();
+      const to = document.getElementById('input-to').value.trim();
+      const memo = document.getElementById('input-memo').value.trim();
+
+      if (!name) {
+        alert("氏名を選択してください。");
         return;
       }
 
-      container.innerHTML = dataList.map(item => {
-        const fareText = item.icFare > 0 ? `IC: ¥${item.icFare.toLocaleString()}` : `通常: ¥${item.regularFare.toLocaleString()}`;
-        const yahooUrl = `https://transit.yahoo.co.jp/search/result?from=${encodeURIComponent(item.from)}&to=${encodeURIComponent(item.to)}&ticket=ic`;
+      let fare = 0;
+      let payment = "普通運賃";
+
+      if (transport === 'train') {
+        const icFare = parseInt(document.getElementById('input-ic-fare').value) || 0;
+        const regularFare = parseInt(document.getElementById('input-regular-fare').value) || 0;
+        if (icFare > 0) {
+          fare = icFare;
+          payment = "ICカード";
+        } else if (regularFare > 0) {
+          fare = regularFare;
+          payment = "切符・現金";
+        } else {
+          alert("運賃（ICカードまたは切符運賃のいずれか）を入力してください。");
+          return;
+        }
+      } else {
+        fare = parseInt(document.getElementById('input-single-fare').value) || 0;
+        if (fare <= 0) {
+          alert("運賃（金額）を入力してください。");
+          return;
+        }
+        payment = transport === 'taxi' ? 'タクシー' : (transport === 'bus' ? '路線バス' : 'その他');
+      }
+
+      // Firestoreへのデータ送信
+      const record = {
+        date,
+        name,
+        transport,
+        from: transport === 'taxi' ? '（場所指定なし）' : from,
+        to: transport === 'taxi' ? '（場所指定なし）' : to,
+        fare,
+        payment,
+        memo,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      try {
+        await db.collection("records").add(record);
+
+        // Google Chatへの即時通知送信
+        let emoji = '🚃';
+        if (transport === 'taxi') emoji = '🚖';
+        if (transport === 'bus') emoji = '🚌';
+        if (transport === 'other') emoji = '💼';
+
+        const locationText = transport === 'taxi' ? '（タクシー利用・乗降場所略）' : `${from} ➡️ ${to}`;
+
+        const chatMessage = `📢 【交通費精算】精算登録が完了しました！\n\n` +
+                            `👤 精算者: ${name} さん\n` +
+                            `${emoji} 交通手段: ${payment}\n` +
+                            `📍 移動区間: ${locationText}\n` +
+                            `💵 精算金額: ¥${fare.toLocaleString()}\n` +
+                            `📝 備考: ${memo || 'なし'}\n\n` +
+                            `📱 交通費精算アプリURL:\nhttps://ksakayori-ux.github.io/traffic-expense/`;
+
+        fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: chatMessage })
+        }).catch(err => console.warn("Chat送信スキップ:", err));
+
+        // フォームをまっさらに戻す（日付と氏名も含めてリセット）
+        document.getElementById('input-date').value = "";
+        document.getElementById('input-name').value = "";
+        document.getElementById('input-from').value = "";
+        document.getElementById('input-to').value = "";
+        document.getElementById('input-ic-fare').value = "";
+        document.getElementById('input-regular-fare').value = "";
+        document.getElementById('input-single-fare').value = "";
+        document.getElementById('input-memo').value = "";
         
-        return `
-          <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm relative hover:shadow-md transition-all">
-            <div class="flex justify-between items-start mb-2">
-              <span class="text-xs bg-blue-50 text-blue-600 px-2.5 py-1 rounded-full font-bold">
-                ${item.date.replace(/-/g, '/')}
-              </span>
-              <span class="text-sm font-bold text-slate-700 mr-8">${item.name} さん</span>
-            </div>
-            
-            <div class="flex items-center space-x-2 text-sm my-2 text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-              <span class="font-bold text-slate-800">${item.from}</span>
-              <span class="text-slate-400 text-xs"><i class="fa-solid fa-arrow-right"></i></span>
-              <span class="font-bold text-slate-800">${item.to}</span>
-              <a href="${yahooUrl}" target="_blank" class="text-xs text-blue-600 hover:text-blue-800 font-bold ml-auto flex items-center space-x-1 hover:underline">
-                <i class="fa-solid fa-train text-[10px]"></i>
-                <span>路線検索</span>
-              </a>
-            </div>
+        // 交通手段を電車（初期）に戻す
+        selectTransport('train');
 
-            <div class="flex justify-between items-center mt-3 text-xs">
-              <div class="text-slate-500">
-                <span class="mr-2 font-semibold text-slate-700">${item.payment || '未選択'}</span>
-                <span>${item.memo ? ` | 備考: ${item.memo}` : ''}</span>
+        // 完了ポップアップの表示
+        showCustomModal();
+        
+        // リスト再読み込み
+        loadRecords();
+
+      } catch (error) {
+        console.error("データの登録中にエラーが発生しました:", error);
+        alert("登録できませんでした。もう一度お試しください。");
+      }
+    };
+
+    // レコード削除
+    window.deleteRecord = async function(id) {
+      if (!confirm("この交通費データを削除してよろしいですか？")) return;
+      try {
+        await db.collection("records").doc(id).delete();
+        loadRecords();
+      } catch (error) {
+        console.error("削除エラー:", error);
+        alert("削除に失敗しました。");
+      }
+    };
+
+    // モーダルの開閉
+    function showCustomModal() {
+      document.getElementById('custom-modal').classList.remove('hidden');
+    }
+    window.closeCustomModal = function() {
+      document.getElementById('custom-modal').classList.add('hidden');
+    };
+
+    // 履歴データのリアルタイム読み込み
+    function loadRecords() {
+      db.collection("records").orderBy("date", "desc").orderBy("createdAt", "desc").limit(50)
+        .onSnapshot((querySnapshot) => {
+          allRecords = [];
+          const listContainer = document.getElementById('history-list');
+          listContainer.innerHTML = "";
+
+          document.getElementById('history-count').innerText = `${querySnapshot.size}件`;
+
+          if (querySnapshot.empty) {
+            listContainer.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">登録済みのデータはまだありません。</div>`;
+            return;
+          }
+
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            data.id = doc.id;
+            allRecords.push(data);
+
+            let iconHtml = '<i class="fa-solid fa-train text-blue-500 bg-blue-50 p-2.5 rounded-xl text-base"></i>';
+            if (data.transport === 'taxi') {
+              iconHtml = '<i class="fa-solid fa-taxi text-amber-500 bg-amber-50 p-2.5 rounded-xl text-base"></i>';
+            } else if (data.transport === 'bus') {
+              iconHtml = '<i class="fa-solid fa-bus text-emerald-500 bg-emerald-50 p-2.5 rounded-xl text-base"></i>';
+            } else if (data.transport === 'other') {
+              iconHtml = '<i class="fa-solid fa-ellipsis text-slate-500 bg-slate-50 p-2.5 rounded-xl text-base"></i>';
+            }
+
+            const fromToText = data.transport === 'taxi' ? 'タクシー乗車' : `${data.from} ➡️ ${data.to}`;
+
+            const card = document.createElement('div');
+            card.className = "bg-slate-50 rounded-xl p-4 border border-slate-100 flex justify-between items-center relative hover:bg-slate-100/50 transition-all";
+            card.innerHTML = `
+              <div class="flex items-center space-x-3 pr-8">
+                ${iconHtml}
+                <div>
+                  <div class="flex items-center space-x-2">
+                    <span class="text-sm font-bold text-slate-800">${data.name}</span>
+                    <span class="text-[10px] text-slate-400 font-medium">${data.date}</span>
+                  </div>
+                  <p class="text-xs text-slate-600 font-medium mt-0.5">${fromToText}</p>
+                  ${data.memo ? `<p class="text-[11px] text-slate-400 mt-1"><i class="fa-regular fa-comment mr-1"></i>${data.memo}</p>` : ''}
+                </div>
               </div>
-              <div class="text-right">
-                <p class="text-xs text-slate-400">交通費合計</p>
-                <p class="text-lg font-extrabold text-blue-600">¥${(item.icFare || item.regularFare || 0).toLocaleString()}</p>
+              <div class="text-right flex flex-col items-end shrink-0">
+                <span class="text-sm font-bold text-slate-900">¥${data.fare.toLocaleString()}</span>
+                <span class="text-[10px] text-slate-400 mt-0.5">${data.payment}</span>
+                <button onclick="deleteRecord('${data.id}')" class="absolute top-2 right-2 text-slate-300 hover:text-rose-500 p-1 transition-all text-xs" title="削除">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
               </div>
-            </div>
-
-            <button onclick="deleteRecord('${item.id}')" class="absolute top-3 right-3 text-slate-300 hover:text-rose-500 p-1.5 rounded-lg transition-all">
-              <i class="fa-solid fa-trash-can text-sm"></i>
-            </button>
-          </div>
-        `;
-      }).join('');
-
-      renderDashboard();
+            `;
+            listContainer.appendChild(card);
+          });
+          
+          // タブ②のレポートをバックグラウンド更新
+          loadReport();
+        }, (error) => {
+          console.error("データ取得中にエラーが発生しました:", error);
+        });
     }
 
-    // 「25日〜翌月24日」締め集計ロジックの実装
-    function renderDashboard() {
-      const selectedMonth = document.getElementById('filter-month').value; // 例: "2026-06"
+    // レポート集計
+    window.loadReport = function() {
+      const selectedMonth = document.getElementById('filter-month').value;
       if (!selectedMonth) return;
 
       const [year, month] = selectedMonth.split('-').map(Number);
-      
-      // 対象期間の決定 (例: 2026年6月度 => 2026年5月25日 00:00:00 〜 2026年6月24日 23:59:59)
-      const startDate = new Date(year, month - 2, 25, 0, 0, 0, 0);
-      const endDate = new Date(year, month - 1, 24, 23, 59, 59, 999);
 
-      // 表示文字の更新
-      document.getElementById('current-month-label').innerText = `${month}月度 支払総額`;
-      document.getElementById('current-month-text').innerText = `${startDate.getFullYear()}/${startDate.getMonth()+1}/25 〜 ${endDate.getFullYear()}/${endDate.getMonth()+1}/24 締分`;
-
-      // 締め日範囲内のデータのみ抽出
-      const monthlyData = dataList.filter(item => {
-        const itemDate = new Date(item.date);
-        return itemDate >= startDate && itemDate <= endDate;
-      });
-
-      // 1. 今月度の総額
-      const totalAmount = monthlyData.reduce((sum, item) => sum + (item.icFare || item.regularFare || 0), 0);
-      document.getElementById('sum-monthly-total').innerText = `¥${totalAmount.toLocaleString()}`;
-      document.getElementById('monthly-count').innerText = `${monthlyData.length}回`;
-
-      // 2. 氏名別の合計を集計
-      const userSummary = {};
-      const defaultMembers = ["坂寄", "小川", "深澤", "森尻"];
-      defaultMembers.forEach(m => userSummary[m] = { count: 0, amount: 0 });
-
-      monthlyData.forEach(item => {
-        if (!userSummary[item.name]) {
-          userSummary[item.name] = { count: 0, amount: 0 };
-        }
-        userSummary[item.name].count += 1;
-        userSummary[item.name].amount += (item.icFare || item.regularFare || 0);
-      });
-
-      // テーブル描画
-      const tableBody = document.getElementById('summary-table-body');
-      tableBody.innerHTML = Object.keys(userSummary).map(name => {
-        const info = userSummary[name];
-        return `
-          <tr class="hover:bg-slate-50/50">
-            <td class="py-3 px-3 font-semibold text-slate-700">${name}</td>
-            <td class="py-3 px-3 text-right text-slate-500 font-medium">${info.count} 回</td>
-            <td class="py-3 px-3 text-right text-blue-600 font-bold">¥${info.amount.toLocaleString()}</td>
-          </tr>
-        `;
-      }).join('');
-
-      updateChart(userSummary);
-    }
-
-    function updateChart(userSummary) {
-      const ctx = document.getElementById('summaryChart').getContext('2d');
-      const labels = Object.keys(userSummary);
-      const data = labels.map(name => userSummary[name].amount);
-
-      if (chartInstance) {
-        chartInstance.destroy();
+      // 締め期間（前月25日〜当月24日）
+      let prevYear = year;
+      let prevMonth = month - 1;
+      if (prevMonth === 0) {
+        prevMonth = 12;
+        prevYear -= 1;
       }
 
-      chartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: '交通費合計 (円)',
-            data: data,
-            backgroundColor: [
-              'rgba(59, 130, 246, 0.8)',
-              'rgba(99, 102, 241, 0.8)',
-              'rgba(16, 185, 129, 0.8)',
-              'rgba(245, 158, 11, 0.8)'
-            ],
-            borderColor: [
-              '#3b82f6', '#6366f1', '#10b981', '#f59e0b'
-            ],
-            borderWidth: 1.5,
-            borderRadius: 6
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: {
-                callback: function(value) { return '¥' + value.toLocaleString(); },
-                font: { size: 9 }
-              },
-              grid: { color: '#f1f5f9' }
-            },
-            x: {
-              grid: { display: false },
-              ticks: { font: { size: 11, weight: 'bold' } }
-            }
+      const startDateStr = `${prevYear}-${String(prevMonth).padStart(2, '0')}-25`;
+      const endDateStr = `${year}-${String(month).padStart(2, '0')}-24`;
+
+      const startDate = new Date(startDateStr);
+      const endDate = new Date(endDateStr);
+
+      // 人別集計
+      const userTotals = { "坂寄": 0, "小川": 0, "深澤": 0, "森尻": 0 };
+      const userCounts = { "坂寄": 0, "小川": 0, "深澤": 0, "森尻": 0 };
+
+      // 対象データのみ抽出
+      allRecords.forEach(rec => {
+        const recDate = new Date(rec.date);
+        if (recDate >= startDate && recDate <= endDate) {
+          if (userTotals[rec.name] !== undefined) {
+            userTotals[rec.name] += rec.fare;
+            userCounts[rec.name] += 1;
           }
         }
       });
-    }
 
-    window.switchTab = function(tabName) {
-      const tabList = document.getElementById('tab-list');
-      const tabDashboard = document.getElementById('tab-dashboard');
-      const viewList = document.getElementById('view-list');
-      const viewDashboard = document.getElementById('view-dashboard');
+      // UIレンダリング
+      const graphContainer = document.getElementById('report-graph-container');
+      const tableBody = document.getElementById('report-table-body');
 
-      if (tabName === 'list') {
-        tabList.className = "flex-1 text-center py-2.5 rounded-lg font-bold text-sm transition-all bg-white text-blue-600 shadow-sm";
-        tabDashboard.className = "flex-1 text-center py-2.5 rounded-lg font-bold text-sm transition-all text-slate-600 hover:text-slate-800";
-        viewList.classList.remove('hidden');
-        viewDashboard.classList.add('hidden');
-      } else {
-        tabList.className = "flex-1 text-center py-2.5 rounded-lg font-bold text-sm transition-all text-slate-600 hover:text-slate-800";
-        tabDashboard.className = "flex-1 text-center py-2.5 rounded-lg font-bold text-sm transition-all bg-white text-blue-600 shadow-sm";
-        viewList.classList.add('hidden');
-        viewDashboard.classList.remove('hidden');
-        setTimeout(renderDashboard, 50);
+      graphContainer.innerHTML = "";
+      tableBody.innerHTML = "";
+
+      // 最大値（プログレスバーの比率用）
+      const maxFare = Math.max(...Object.values(userTotals), 5000); 
+
+      let hasData = false;
+
+      Object.keys(userTotals).forEach(name => {
+        const total = userTotals[name];
+        const count = userCounts[name];
+        if (total > 0) hasData = true;
+
+        const percent = (total / maxFare) * 100;
+
+        // グラフ要素の作成
+        const graphItem = document.createElement('div');
+        graphItem.className = "space-y-1.5";
+        graphItem.innerHTML = `
+          <div class="flex justify-between items-center text-xs">
+            <span class="font-bold text-slate-700">${name} (${count}件)</span>
+            <span class="font-bold text-slate-900">¥${total.toLocaleString()}</span>
+          </div>
+          <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+            <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-500" style="width: ${percent}%"></div>
+          </div>
+        `;
+        graphContainer.appendChild(graphItem);
+
+        // 表要素の作成
+        const row = document.createElement('tr');
+        row.className = "border-b border-slate-50 text-xs";
+        row.innerHTML = `
+          <td class="py-3.5 font-bold text-slate-800">${name}</td>
+          <td class="py-3.5 text-right font-medium text-slate-500">${count}件</td>
+          <td class="py-3.5 text-right font-bold text-slate-900">¥${total.toLocaleString()}</td>
+        `;
+        tableBody.appendChild(row);
+      });
+
+      if (!hasData) {
+        graphContainer.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">指定月度の交通費データは存在しません</div>`;
+        tableBody.innerHTML = `<tr><td colspan="3" class="text-center py-8 text-slate-400 text-xs">データがありません</td></tr>`;
       }
     };
 
-    window.exportToCSV = function() {
-      if (dataList.length === 0) {
-        showCustomModal("データがありません", "エクスポートする交通費精算データが登録されていません。", "error");
+    // Excel（CSV）エクスポート
+    window.downloadCSV = function() {
+      if (allRecords.length === 0) {
+        alert("保存するデータがありません。");
         return;
       }
 
-      let csvContent = "\uFEFF日付,氏名,乗車駅,降車駅,IC運賃,通常運賃,支払方法,備考\n";
+      // BOM付きUTF-8（Excelで文字化けしない対策）
+      let csvContent = "\uFEFF";
+      csvContent += "日付,氏名,交通手段,出発地（乗車駅）,目的地（降車駅）,運賃,区分,備考\n";
 
-      dataList.forEach(item => {
+      allRecords.forEach(rec => {
         const row = [
-          item.date.replace(/-/g, '/'),
-          item.name,
-          item.from,
-          item.to,
-          item.icFare || 0,
-          item.regularFare || 0,
-          item.payment || '未選択',
-          item.memo || ''
-        ].map(val => `"${val.toString().replace(/"/g, '""')}"`).join(",");
-        csvContent += row + "\n";
+          rec.date,
+          rec.name,
+          rec.transport === 'train' ? '電車' : (rec.transport === 'taxi' ? 'タクシー' : (rec.transport === 'bus' ? 'バス' : 'その他')),
+          `"${rec.from || ''}"`,
+          `"${rec.to || ''}"`,
+          rec.fare,
+          rec.payment,
+          `"${rec.memo || ''}"`
+        ];
+        csvContent += row.join(",") + "\n";
       });
 
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `交通費精算_25日締め_${new Date().toISOString().slice(0,10)}.csv`);
+      link.setAttribute("download", `交通費精算データ_${new Date().toISOString().slice(0, 10)}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     };
 
-    function showCustomModal(title, msg, type) {
-      const modal = document.getElementById('custom-modal');
-      const modalTitle = document.getElementById('modal-title');
-      const modalMessage = document.getElementById('modal-message');
-      const iconContainer = document.getElementById('modal-icon-container');
+    // アプリ起動時の設定
+    window.onload = function() {
+      const today = new Date();
+      let defaultYear = today.getFullYear();
+      let defaultMonth = today.getMonth() + 1;
 
-      modalTitle.innerText = title;
-      modalMessage.innerText = msg;
-
-      if (type === 'success') {
-        iconContainer.innerHTML = '<i class="fa-solid fa-circle-check text-5xl text-emerald-500"></i>';
-      } else if (type === 'error') {
-        iconContainer.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-5xl text-rose-500"></i>';
-      } else {
-        iconContainer.innerHTML = '<i class="fa-solid fa-circle-info text-5xl text-blue-500"></i>';
+      // 25日以降の入力は翌月度扱いにする
+      if (today.getDate() >= 25) {
+        defaultMonth += 1;
+        if (defaultMonth > 12) {
+          defaultMonth = 1;
+          defaultYear += 1;
+        }
       }
+      const defaultMonthStr = `${defaultYear}-${String(defaultMonth).padStart(2, '0')}`;
 
-      modal.classList.remove('hidden');
-    }
+      // 日付と名前の入力をクリアした「未選択（空白）」状態にする
+      document.getElementById('input-date').value = "";
+      document.getElementById('input-name').value = "";
+      document.getElementById('filter-month').value = defaultMonthStr;
 
-    window.closeModal = function() {
-      document.getElementById('custom-modal').classList.add('hidden');
+      // 交通手段の初期設定（電車）
+      selectTransport('train');
+
+      // データのロード
+      loadRecords();
     };
-
-    initApp();
   </script>
 </body>
 </html>
