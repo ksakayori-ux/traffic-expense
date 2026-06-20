@@ -393,30 +393,7 @@
       if (localData) {
         dataList = JSON.parse(localData);
       } else {
-        dataList = [
-          {
-            id: 'sample-1',
-            date: '2026-03-24',
-            name: '坂寄',
-            from: '小田原',
-            to: '二宮',
-            icFare: 330,
-            regularFare: 330,
-            payment: 'ICカード',
-            memo: '3月度精算（締め日前）'
-          },
-          {
-            id: 'sample-2',
-            date: '2026-03-25',
-            name: '小川',
-            from: '二宮',
-            to: '小田原',
-            icFare: 330,
-            regularFare: 330,
-            payment: 'ICカード',
-            memo: '4月度精算（締め日以降）'
-          }
-        ];
+        dataList = []; // 初期サンプル用テストデータを完全に削除して空っぽ（綺麗）にします
         saveToLocal();
       }
       renderData();
