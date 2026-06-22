@@ -105,7 +105,7 @@
           <div class="relative flex flex-col space-y-2">
             <div>
               <label for="input-from" id="label-from" class="block text-xs font-bold text-gray-500 uppercase mb-1">乗車駅</label>
-              <input type="text" id="input-from" placeholder="例：東京" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all">
+              <input type="text" id="input-from" oninput="predictFare()" placeholder="例：東京" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all">
             </div>
             
             <!-- 行き帰り入れ替えボタン -->
@@ -117,7 +117,7 @@
 
             <div>
               <label for="input-to" id="label-to" class="block text-xs font-bold text-gray-500 uppercase mb-1">降車駅</label>
-              <input type="text" id="input-to" placeholder="例：大手町" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all">
+              <input type="text" id="input-to" oninput="predictFare()" placeholder="例：大手町" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all">
             </div>
           </div>
 
@@ -128,6 +128,12 @@
               <span id="text-yahoo-btn">Yahoo!路線情報で運賃を調べる</span>
             </button>
           </div>
+        </div>
+
+        <!-- 運賃予測表示ヒント -->
+        <div id="fare-prediction-hint" class="hidden text-xs text-blue-600 font-bold bg-blue-50 px-3 py-2 rounded-xl border border-blue-100 flex items-center space-x-1">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5 animate-pulse"></i>
+          <span id="fare-prediction-text">過去の履歴から運賃を自動入力しました！</span>
         </div>
 
         <!-- 運賃入力 (交通手段によって切り替え) -->
@@ -260,6 +266,17 @@
       document.getElementById("input-date").value = "";
       document.getElementById("input-name").value = "";
 
+      // 💾 超高速キャッシュ読み込み（スマホでのまっさら表示対策）
+      const cached = localStorage.getItem("odx_traffic_records_cache");
+      if (cached) {
+        try {
+          allRecords = JSON.parse(cached);
+          renderUI();
+        } catch(e) {
+          console.error("キャッシュ解析失敗:", e);
+        }
+      }
+
       // URLの設定チェック
       if (!DATABASE_GAS_URL || DATABASE_GAS_URL.includes("ここにデプロイ")) {
         showCustomModal(
@@ -370,15 +387,87 @@
         sectionSingleFare.classList.remove("hidden");
         labelSingleFare.innerText = "運賃/金額 (円)";
       }
+
+      // フォームを切り替えたら再度予測実行
+      predictFare();
     }
 
-    // 出発地と目的地の入れ替え
+    // 出発地と目的地の入れ替え（⇔ボタン）
     function swapRoute() {
       const fromInput = document.getElementById("input-from");
       const toInput = document.getElementById("input-to");
       const temp = fromInput.value;
       fromInput.value = toInput.value;
       toInput.value = temp;
+
+      // 入れ替え後に自動予測をかける
+      predictFare();
+    }
+
+    // 💡 過去の履歴から運賃を予測して自動反映
+    function predictFare() {
+      if (activeTransport === "taxi") {
+        hideFarePredictionHint();
+        return; // タクシーは位置入力が無いため不要
+      }
+
+      const from = document.getElementById("input-from").value.trim();
+      const to = document.getElementById("input-to").value.trim();
+
+      if (!from || !to) {
+        hideFarePredictionHint();
+        return;
+      }
+
+      // 同方向（行き）の過去履歴を最優先で検索
+      let match = allRecords.find(r => 
+        r.transport === activeTransport &&
+        r.from.trim() === from &&
+        r.to.trim() === to
+      );
+
+      let isReverse = false;
+      if (!match) {
+        // 逆方向（帰り）の過去履歴を検索
+        match = allRecords.find(r => 
+          r.transport === activeTransport &&
+          r.from.trim() === to &&
+          r.to.trim() === from
+        );
+        if (match) isReverse = true;
+      }
+
+      if (match) {
+        const fare = Number(match.fare);
+        if (activeTransport === "train") {
+          // 電車はIC運賃へ優先反映（切符はクリア）
+          document.getElementById("input-ic-fare").value = fare;
+          document.getElementById("input-regular-fare").value = "";
+        } else {
+          document.getElementById("input-single-fare").value = fare;
+        }
+
+        // ヒントメッセージを表示
+        showFarePredictionHint(
+          isReverse 
+            ? `💡 逆区間（帰り）の履歴から運賃 ¥${fare.toLocaleString()} を自動入力しました！`
+            : `💡 過去の履歴から運賃 ¥${fare.toLocaleString()} を自動入力しました！`
+        );
+      } else {
+        hideFarePredictionHint();
+      }
+    }
+
+    function showFarePredictionHint(text) {
+      const hint = document.getElementById("fare-prediction-hint");
+      const hintText = document.getElementById("fare-prediction-text");
+      hintText.innerText = text;
+      hint.classList.remove("hidden");
+    }
+
+    function hideFarePredictionHint() {
+      const hint = document.getElementById("fare-prediction-hint");
+      hint.classList.add("hidden");
     }
 
     // Yahoo!路線情報へ連携
@@ -415,16 +504,22 @@
         // 最新のものが上に来るように逆順にソートして保持
         allRecords = data.reverse();
         
+        // 💾 キャッシュをストレージに保存
+        localStorage.setItem("odx_traffic_records_cache", JSON.stringify(allRecords));
+
         renderUI();
+        predictFare(); // データがロードされたので、現在入力中の駅があれば反映
       } catch (err) {
         console.error(err);
-        historyList.innerHTML = `
-          <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-xs space-y-1">
-            <p class="font-bold">❌ データの読み込みに失敗しました</p>
-            <p class="text-gray-500">デプロイ先のウェブアプリURLが正しく、アクセス権限が「全員(Anyone)」で設定されているか確認してください。</p>
-            <p class="text-gray-400 mt-2">エラー詳細: ${err.message}</p>
-          </div>
-        `;
+        if (allRecords.length === 0) {
+          historyList.innerHTML = `
+            <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-xs space-y-1">
+              <p class="font-bold">❌ データの読み込みに失敗しました</p>
+              <p class="text-gray-500">デプロイ先のウェブアプリURLが正しく、アクセス権限が「全員(Anyone)」で設定されているか確認してください。</p>
+              <p class="text-gray-400 mt-2">エラー詳細: ${err.message}</p>
+            </div>
+          `;
+        }
       }
     }
 
@@ -645,6 +740,7 @@
         document.getElementById("input-single-fare").value = "";
         document.getElementById("input-memo").value = "";
         setTransport("train");
+        hideFarePredictionHint();
 
         toggleGlobalLoader(false);
         showCustomModal("alert", "登録完了", "スプレッドシートへ正常に登録し、Google Chatへ通知を行いました！", "success");
