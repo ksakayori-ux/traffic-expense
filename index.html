@@ -20,17 +20,9 @@
 
   <script>
     // -------------------------------------------------------------------------
-    // ⚠️ 【ここだけ書き換えてください！】
-    // GoogleスプレッドシートのGASで「デプロイ」した際に発行された、
-    // 「ウェブアプリのURL（https://script.google.com/macros/s/...）」をここに貼り付けてください。
+    // 🔗 GoogleスプレッドシートのGAS「ウェブアプリURL」
     // -------------------------------------------------------------------------
     const DATABASE_GAS_URL = "https://script.google.com/macros/s/AKfycbwUcebtbq4p4-zR6OLrk7E3ntZqMJ67WNFEzJ292JjmK0YK3VrVh7-ojiz8vXEUXIZfSQ/exec";
-
-    // -------------------------------------------------------------------------
-    // 📢 Google Chatへの即時通知用 Webhook URL
-    // (登録時にリアルタイムで通知が飛びます)
-    // -------------------------------------------------------------------------
-    const WEBHOOK_URL = "https://chat.googleapis.com/v1/spaces/AAAAxHdOaBA/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Fsh3lqmrbuDx8AqJIyHfeBdDecgx03H1pEJgwBUuPMw";
   </script>
 
   <div class="max-w-md mx-auto bg-white min-h-screen shadow-lg flex flex-col justify-between">
@@ -282,7 +274,7 @@
         showCustomModal(
           "alert",
           "初期設定が必要です",
-          "右側のファイルの上部(24行目付近)にある `DATABASE_GAS_URL` に、Google Apps Scriptで発行されたURLを貼り付けてから、GitHubへアップロードしてください。",
+          "右側のファイルの上部(18行目付近)にある `DATABASE_GAS_URL` に、Google Apps Scriptで発行されたURLを貼り付けてから、GitHubへアップロードしてください。",
           "warning"
         );
       } else {
@@ -458,6 +450,7 @@
       }
     }
 
+    // 予測ヒント表示・非表示
     function showFarePredictionHint(text) {
       const hint = document.getElementById("fare-prediction-hint");
       const hintText = document.getElementById("fare-prediction-text");
@@ -718,17 +711,7 @@
           throw new Error(resJson.message);
         }
 
-        // ② Google Chatへの即時Webhook通知
-        if (WEBHOOK_URL && !WEBHOOK_URL.includes("ここに")) {
-          const routeText = activeTransport === "taxi" ? "" : `\n📍 区間：${from} ➡️ ${to}`;
-          const chatMessage = `📢 交通費の精算登録がありました！\n👤 精算者：${name} さん\n🚗 手段：${activeTransport === "train" ? "🚆 電車" : activeTransport === "taxi" ? "🚖 タクシー" : activeTransport === "bus" ? "🚌 バス" : "📍 その他"}${routeText}\n💵 金額：¥${finalFare.toLocaleString()} (${payment})\n💬 備考：${memo || "特になし"}`;
-
-          await fetch(WEBHOOK_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: chatMessage })
-          }).catch(chatErr => console.warn("Google Chat通知失敗:", chatErr));
-        }
+        // (即時チャット通知機能は、あえて申請通知なしにするため削除しました)
 
         // フォームのリセット (完全にクリアな初期状態に戻す)
         document.getElementById("input-date").value = "";
@@ -743,7 +726,7 @@
         hideFarePredictionHint();
 
         toggleGlobalLoader(false);
-        showCustomModal("alert", "登録完了", "スプレッドシートへ正常に登録し、Google Chatへ通知を行いました！", "success");
+        showCustomModal("alert", "登録完了", "スプレッドシートへ正常に登録されました！", "success");
         
         // 再ロード
         loadRecords();
